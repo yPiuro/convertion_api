@@ -159,10 +159,10 @@ def setup():
 
 
 if __name__ == "__main__":
+    setup()
     queue = server.cached_data_q
     server.produce_cache(queue)
     server.repeat(1.505, server.produce_cache, queue)
     server.repeat(1.51, server.consume_cache, queue)
     server.repeat(60, cache.expiry_job)
-    setup()
     uvicorn.run(server.app, host="0.0.0.0", port=8000)
