@@ -59,7 +59,7 @@ async def cache_file(mp4_file_hash: str, filename: str, file_bytes: bytes, conve
     """Store original MP4 bytes, converted MP3 bytes, and expiry in the cache folder."""
     subdir = os.path.join(BASE_DIR, f"cache/{mp4_file_hash}")
     os.makedirs(subdir, exist_ok=True)
-    expiry_date = time.time() + (3600//2//3//10)
+    expiry_date = time.time() + (3600//2//3)
     mp4_path = os.path.join(subdir, filename)
     with open(mp4_path, "wb") as f:
         f.write(file_bytes)
