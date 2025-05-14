@@ -38,7 +38,6 @@ async def memConvertMp3(
     try:
         await file.seek(0)
         input_bytes = await file.read()
-        print(len(input_bytes))
         process = (
             ffmpeg.input("pipe:0")
             .output(
@@ -56,7 +55,6 @@ async def memConvertMp3(
             process.communicate, input=input_bytes
         )
         retcode = process.wait()
-        print(len(stdout_data))
         if retcode != 0:
             error_message = stderr_data.decode("utf-8", errors="ignore")
             print(

@@ -10,7 +10,7 @@ import hashlib
 from util import schemas, ffmpegHelper
 import util.cache
 import time
-import threading
+import asyncio
 import queue
 
 # Define the set of supported video extensions
@@ -61,43 +61,66 @@ app = FastAPI(
 
 # This is the Fast API initiation which includes license info, api info, contact info and etc
 
+stop_event = asyncio.Event()
+
 
 # shared state and queue, using a global.
 cached_data: Any = None
 cached_data_q: "queue.Queue[Any]" = queue.Queue()
 
 
-def consume_cache(q: queue.Queue):
+async def consume_cache(q: queue.Queue):
     global cached_data
-    try:
-        item = q.get(timeout=0.1)
-    except queue.Empty:
-        print("consume_cache: queue empty")
-        return
-    cached_data = item
+    while not stop_event.is_set():
+        try:
+            item = q.get_nowait()
+            cached_data = item
+        except queue.Empty:
+            pass
+        await asyncio.sleep(.5)
 
 
-def produce_cache(q: queue.Queue):
-    fresh = util.cache.view_info()
-    q.put(fresh)
+async def produce_cache(q: queue.Queue):
+    while not stop_event.is_set():
+        fresh = util.cache.view_info()
+        q.put(fresh)
+        await asyncio.sleep(.5)
 
 
-def repeat(interval: float, func, *args, **kwargs):
-    try:
-        """
-        Calls func(*args, **kwargs) immediately to then schedule itself again after `interval` - seconds (I tried to replicate JS setInterval).
-        """
-        func(*args, **kwargs)
-        t = threading.Timer(interval, repeat, (interval, func) + args, kwargs)
-        t.daemon = True
-        t.start()
-    except Exception as e:
-        t = threading.Timer(interval, repeat, (interval, func) + args, kwargs)
-        t.daemon = True
-        t.start()
-        print(f"Crashed, restarting cache thread: {e}")
+async def expiry_loop():
+    """Purge stale files every 0.25s."""
+    while not stop_event.is_set():
+        util.cache.expiry_job()
+        await asyncio.sleep(.25)
 
-# This is just to spawn repeating jobs e.g cache invalidation and making a cache in memory instead of grabbing cache everytime a request to /cache is made.
+
+@app.on_event("startup")
+async def startup_tasks():
+    # start all background loops and stash the tasks so we can cancel them
+    app.state.expiry_task = asyncio.create_task(expiry_loop())
+    app.state.producer_task = asyncio.create_task(
+        produce_cache(cached_data_q)
+    )
+    app.state.consumer_task = asyncio.create_task(
+        consume_cache(cached_data_q)
+    )
+
+
+@app.on_event("shutdown")
+async def shutdown_tasks():
+    stop_event.set()
+    # cancel the running tasks
+    for t in (app.state.producer_task, app.state.consumer_task,
+              app.state.expiry_task):
+        t.cancel()
+    await asyncio.gather(
+        app.state.producer_task,
+        app.state.consumer_task,
+        app.state.expiry_task,
+        return_exceptions=True
+    )
+
+# This is just to spawn repeating jobs e.g making a cache in memory instead of grabbing cache everytime a request to /cache is made.
 
 #######################################################################################################
 

@@ -5,6 +5,7 @@ import os
 import json
 import time
 import shutil
+import stat
 
 BASE_DIR = os.getcwd()
 
@@ -24,10 +25,10 @@ async def find_file(mp4_file_hash: str, ext: Literal['mp3', 'mp4']) -> CachedFil
             if f.endswith(ext):
                 with open(f"{cache_folder}/metadata.json") as meta_file:
                     meta = json.load(meta_file)
-                    if meta["expiry_date"] < time.time():
-                        shutil.rmtree(cache_folder)
-                        raise HTTPException(
-                            410, "Sorry this file was cached but has just been invalidated, please upload it again :)")
+                if meta["expiry_date"] < time.time():
+                    shutil.rmtree(cache_folder)
+                    raise HTTPException(
+                        410, "Sorry this file was cached but has just been invalidated, please upload it again :)")
                 with open(f"{cache_folder}/{f}", "rb") as f_file:
                     return CachedFile(filename=f, mp4_file_hash=mp4_file_hash, expiry_date=meta["expiry_date"], file_bytes=f_file.read())
     else:
@@ -38,19 +39,19 @@ def view_info() -> list[CachedFile]:
     cache_folder = f"{os.getcwd()}/cache"
     cached_data = []
     for folder in os.listdir(cache_folder):
-        with open(f"{cache_folder}/{folder}/metadata.json") as meta_file:
-            meta = json.load(meta_file)
-            if meta["expiry_date"] < time.time():
-                shutil.rmtree(cache_folder)
-                raise HTTPException(
-                    410, "Sorry this file was cached but has just been invalidated, please upload it again :)")
-        for f in os.listdir(f"{cache_folder}/{folder}"):
-            if f.endswith("json"):
-                continue
-            with open(f"{cache_folder}/{folder}/{f}", 'rb') as f_file:
-                cached_data.append(CachedFile(filename=f.split('.')[
-                                   0], mp4_file_hash=folder, expiry_date=meta["expiry_date"], file_bytes=f_file.read()))
-            break
+        try:
+            with open(f"{cache_folder}/{folder}/metadata.json") as meta_file:
+                meta = json.load(meta_file)
+
+            for f in os.listdir(f"{cache_folder}/{folder}"):
+                if f.endswith("json"):
+                    continue
+                with open(f"{cache_folder}/{folder}/{f}", 'rb') as f_file:
+                    cached_data.append(CachedFile(filename=f.split('.')[
+                        0], mp4_file_hash=folder, expiry_date=meta["expiry_date"], file_bytes=f_file.read()))
+                break
+        except Exception:
+            return view_info()
     return cached_data
 
 
@@ -58,7 +59,7 @@ async def cache_file(mp4_file_hash: str, filename: str, file_bytes: bytes, conve
     """Store original MP4 bytes, converted MP3 bytes, and expiry in the cache folder."""
     subdir = os.path.join(BASE_DIR, f"cache/{mp4_file_hash}")
     os.makedirs(subdir, exist_ok=True)
-    expiry_date = time.time() + (3600//2//3)
+    expiry_date = time.time() + (3600//2//3//10)
     mp4_path = os.path.join(subdir, filename)
     with open(mp4_path, "wb") as f:
         f.write(file_bytes)
@@ -90,5 +91,6 @@ def expiry_job():
         for folder in os.listdir(cache_folder):
             with open(f"{cache_folder}/{folder}/metadata.json") as meta_file:
                 meta = json.load(meta_file)
-                if meta["expiry_date"] < time.time():
-                    shutil.rmtree(f"{cache_folder}/{folder}")
+            if meta["expiry_date"] is not None and meta["expiry_date"] < time.time():
+                os.chmod(f"{cache_folder}/{folder}", stat.S_IWRITE)
+                shutil.rmtree(f"{cache_folder}/{folder}")
