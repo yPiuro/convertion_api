@@ -57,6 +57,7 @@ app = FastAPI(
     docs_url="/"
 )
 
+
 # This is the Fast API initiation which includes license info, api info, contact info and etc
 
 stop_event = asyncio.Event()
@@ -165,7 +166,6 @@ async def convert_file(background_tasks: BackgroundTasks, file: UploadFile = Fil
 
     if cached_file:
         return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={os.path.splitext(file_ogname)[0]}.mp3', 'Content-Lenght': str(len(cached_file.file_bytes))}) if cached_file is not None else None
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid file")
 
     await file.seek(0)
     converted_file = await ffmpegHelper.memConvertMp3(file, quality)
@@ -187,7 +187,7 @@ async def donwload_converted_cached_file(file_id: str):
     cached_file = await util.cache.find_file(file_id, 'mp3')
     if not cached_file or not cached_file.file_bytes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid")
-    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={cached_file.filename}', 'Content-Lenght': str(len(cached_file.file_bytes))})
+    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={cached_file.filename}.mp3', 'Content-Lenght': str(len(cached_file.file_bytes))})
 
 
 @app.get("/cache/dl/og/{file_id}", tags=["cache"], name='dl_video')
@@ -199,9 +199,10 @@ async def donwload_original_cached_file(file_id: str):
         file_id (str): The ID of the cached file to download.
     """
     cached_file = await util.cache.find_file(file_id, 'video')
+
     if not cached_file or not cached_file.file_bytes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid")
-    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='video', headers={'Content-Disposition': f'attachment; filename={cached_file.filename+cached_file.file_ext}', 'Content-Lenght': str(len(cached_file.file_bytes))})
+    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='video', headers={'Content-Disposition': f'attachment; filename={cached_file.filename}{cached_file.file_ext}', 'Content-Lenght': str(len(cached_file.file_bytes))})
 
 
 @app.get("/cache/", tags=['cache'], response_model=schemas.CacheResponse, responses={status.HTTP_404_NOT_FOUND: {"model": schemas.CacheNotFoundMessage}})
@@ -211,8 +212,8 @@ async def view_cache(request: Request):
     """
     pretty_cached_data = {}
     for file in cached_data:
-        og_url = f"{request.base_url}cache/dl/{file.video_file_hash}"
-        mp3_ulr = f"{request.base_url}cache/dl/og/{file.video_file_hash}"
+        og_url = f"{request.base_url}cache/dl/og/{file.video_file_hash}"
+        mp3_ulr = f"{request.base_url}cache/dl/{file.video_file_hash}"
         time_invalidate = time.strftime(
             "%H:%M:%S", time.localtime(file.expiry_date))
         min_till_expire = round((file.expiry_date - time.time())/60, 2)
