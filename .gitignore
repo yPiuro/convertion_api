@@ -4,3 +4,4 @@ cache/*
 .venv/
 .venv
 ffmpeg*
+*.exe
