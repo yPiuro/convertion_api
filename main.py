@@ -12,6 +12,8 @@ try:
     import pydantic
     from util import schemas, ffmpegHelper
     from util import cache
+    import util
+    from util import COLORS as c
     import server
     import time
 except Exception as e:
@@ -23,7 +25,7 @@ except Exception as e:
     exit()
 
 WORKING_DIR = os.getcwd() + "/dit8.convertapi"
-
+UMASK_PERMS = os.umask(0o000)
 
 async def install_ffmpeg():
     """Attempt to download and extract an ffmpeg binary to the same directory."""
@@ -116,13 +118,13 @@ async def install_ffmpeg():
             print(
                 f"FFmpeg successfully downloaded and extracted to {extracted_ffmpeg_path}")
         else:
-            print("Error: FFmpeg executable not found after extraction.")
+            print("Error: FFmpeg executable not found after extraction. Please install it manually")
             exit()
     except (zipfile.BadZipFile, tarfile.ReadError) as e:
-        print(f"Error extracting FFmpeg archive: {e}")
+        print(f"Error extracting FFmpeg archive: {e} | Please install it manually")
         exit()
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred: {e} | Report this @ https://github.com/ypiuro/convertion_api")
         exit()
     return extracted_ffmpeg_path
 
@@ -142,7 +144,6 @@ def setup():
         except OSError as e:
             print(f"Error creating directory '{cache_dir}': {e}")
             return
-
     ffmpeg_dir = os.path.dirname(WORKING_DIR)
     ffmepg_bin_path = os.path.join(ffmpeg_dir, "ffmpeg") if platform.system(
     ) != "Windows" else os.path.join(ffmpeg_dir, "ffmpeg") + ".exe"
@@ -160,5 +161,31 @@ def setup():
 
 
 if __name__ == "__main__":
+    util.set_console_title("Convertion API | FastAPI Python")
+    print(f'''
+{c["CYAN"]}__        __   _                             {c["RESET"]}
+{c["CYAN"]}\\ \\      / /__| | ___ ___  _ __ ___   ___   {c["RESET"]}
+{c["CYAN"]} \\ \\ /\\ / / _ \\ |/ __/ _ \\| '_ ` _ \\ / _ \\  {c["RESET"]}
+{c["CYAN"]}  \\ V  V /  __/ | (_| (_) | | | | | |  __/  {c["RESET"]}
+{c["CYAN"]}   \\_/\\_/ \\___|_|\\___\\___/|_| |_| |_|\\___|  {c["RESET"]}
+
+{c["CYAN"]}{c["RESET"]}{c["BOLD"]}{c["LIGHT_YELLOW"]}Video to Audio convertion API{c["RESET"]}{c["CYAN"]}{c["RESET"]}
+Starting setup and environment check process...
+''')
+
     setup()
+    print(
+    f"{c['LIGHT_GREEN']}Working directory and dependency checks completed{c['RESET']}, "
+    f"if you encounter any {c['RED']}{c['BOLD']}{c['UNDERLINE']}BUGS{c['RESET']} "
+    "please report them at:"
+    )
+    print(
+    f"{c['UNDERLINE']}"
+    f"{c['BRIGHT_WHITE']}Github.com"
+    f"{c['BOLD']}{c['BRIGHT_WHITE']}/"
+    f"{c['BLUE']}{c['BOLD']}yPiuro"
+    f"{c['NO_BOLD']}{c['BRIGHT_WHITE']}/"
+    f"{c['LIGHT_YELLOW']}convertion_api"
+    f"{c['RESET']}\n\n"
+    )   
     uvicorn.run(server.app, host="0.0.0.0", port=8000)
