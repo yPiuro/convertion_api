@@ -8,7 +8,7 @@ import shutil
 import stat
 
 BASE_DIR = os.getcwd()
-UMASK_PERMS = os.umask(0o000)
+UMASK_PERMS = os.umask(0o777)
 
 @dataclass
 class CachedFile:
