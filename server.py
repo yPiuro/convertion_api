@@ -2,7 +2,8 @@
 
 import os
 import io
-from fastapi import FastAPI, HTTPException, status, UploadFile, File, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, status, UploadFile, File, BackgroundTasks, Request, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from typing import Any
 import util
@@ -12,214 +13,205 @@ import util.cache
 import time
 import asyncio
 import queue
+import logging
 
-# Define the set of supported video extensions
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("convertion_api")
+
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mkv",
                               ".avi", ".mov", ".wmv", ".flv", ".webm"}
 
-#######################################################################################################
-
 DESCRIPTION = """
-# Video conversion API helps you do convert your definetly legally aquired videos to mp3. 🚀
+Video conversion API helps you convert your legally acquired videos to mp3.
 
-## Files & Cache
-
-You can **upload and then convert files** (/convert).\n
-You can **download files** (/cache/).\n
+Features:
+- Upload and convert files (/convert)
+- Download files (/cache)
 """
 
 TAGS = [
-    {
-        "name": "convert",
-        "description": "Operations with file convertion. (A bit of Cache logic will be here)",
-    },
-    {
-        "name": "cache",
-        "description": "Download or view currently cached files",
-    },
+    {"name": "convert", "description": "Operations with file conversion."},
+    {"name": "cache", "description": "Download or view cached files."},
 ]
 
 app = FastAPI(
     title="Open Convert API",
     description=DESCRIPTION,
-    summary="Simple API that uses ffmpeg to convert video files to mp3",
+    summary="API for converting video files to mp3 using ffmpeg.",
     version="0.0.1",
-    contact={
-        "name": "yPiuro",
-        "url": "https://nohello.net/",
-        "email": "y@piuro.lol",
-    },
-    license_info={
-        "name": "GNU GPL 3.0",
-        "url": "https://www.gnu.org/licenses/gpl-3.0.en.html",
-    },
+    contact={"name": "yPiuro", "url": "https://nohello.net/",
+             "email": "y@piuro.lol"},
+    license_info={"name": "GNU GPL 3.0",
+                  "url": "https://www.gnu.org/licenses/gpl-3.0.en.html"},
     openapi_tags=TAGS,
-    docs_url="/"
+    docs_url="/",
 )
 
-
-# This is the Fast API initiation which includes license info, api info, contact info and etc
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 stop_event = asyncio.Event()
-
-
-# shared state and queue, using a global.
 cached_data: Any = None
 cached_data_q: "queue.Queue[Any]" = queue.Queue()
 
 
 async def consume_cache(q: queue.Queue):
+    """Consume cache data and update global state."""
     global cached_data
     while not stop_event.is_set():
         try:
-            item = q.get_nowait()
-            cached_data = item
+            cached_data = q.get_nowait()
         except queue.Empty:
             pass
-        await asyncio.sleep(.5)
+        await asyncio.sleep(0.5)
 
 
 async def produce_cache(q: queue.Queue):
+    """Produce fresh cache data and enqueue it."""
     while not stop_event.is_set():
-        fresh = util.cache.view_info()
-        q.put(fresh)
-        await asyncio.sleep(.5)
+        q.put(util.cache.view_info())
+        await asyncio.sleep(0.5)
 
 
 async def expiry_loop():
-    """Purge stale files every 60s."""
+    """Purge stale files periodically."""
     while not stop_event.is_set():
         util.cache.expiry_job()
-        await asyncio.sleep(.25)
+        await asyncio.sleep(0.25)
+
+
+async def valid_content_length(content_length: int = Header(..., lt=20_000_000)):
+    """Validate uploaded file size."""
+    if content_length >= 20_000_000:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Content too large")
+    return content_length
 
 
 @app.on_event("startup")
 async def startup_tasks():
-    # start all background loops and stash the tasks so we can cancel them
+    """Start background tasks for cache management."""
     app.state.expiry_task = asyncio.create_task(expiry_loop())
-    app.state.producer_task = asyncio.create_task(
-        produce_cache(cached_data_q)
-    )
-    app.state.consumer_task = asyncio.create_task(
-        consume_cache(cached_data_q)
-    )
+    app.state.producer_task = asyncio.create_task(produce_cache(cached_data_q))
+    app.state.consumer_task = asyncio.create_task(consume_cache(cached_data_q))
 
 
 @app.on_event("shutdown")
 async def shutdown_tasks():
+    """Stop background tasks gracefully."""
     stop_event.set()
-    # cancel the running tasks
-    for t in (app.state.producer_task, app.state.consumer_task,
-              app.state.expiry_task):
-        t.cancel()
-    await asyncio.gather(
-        app.state.producer_task,
-        app.state.consumer_task,
-        app.state.expiry_task,
-        return_exceptions=True
-    )
-
-# This is just to spawn repeating jobs e.g making a cache in memory instead of grabbing cache everytime a request to /cache is made.
-
-#######################################################################################################
+    for task in (app.state.producer_task, app.state.consumer_task, app.state.expiry_task):
+        task.cancel()
+    await asyncio.gather(app.state.producer_task, app.state.consumer_task, app.state.expiry_task, return_exceptions=True)
 
 
-@app.post(
-    "/convert/",
-    tags=['convert'],
-    # response_model=schemas.FileConversionSuccessResponse,
-    status_code=status.HTTP_200_OK
-)
-async def convert_file(background_tasks: BackgroundTasks, file: UploadFile = File(...), quality: ffmpegHelper.QUALITY_OPTIONS = 'best'):
-    """
-    Uploads and validates a video file for conversion.
-
-    Args:
-        file (UploadFile): The video file to be uploaded.
-    """
-    # Handle cases where filename might be None or not have an extension
+@app.post("/convert/", tags=["convert"], status_code=status.HTTP_200_OK, dependencies=[Depends(valid_content_length)])
+async def convert_file(background_tasks: BackgroundTasks, file: UploadFile = File(...), quality: ffmpegHelper.QUALITY_OPTIONS = "best"):
+    """Convert uploaded video file to mp3."""
     if file.filename is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No filename provided in the upload."
-        )
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
 
     file_extension = os.path.splitext(file.filename)[1].lower()
-    # Validate the file extension to make sure ffmpeg supports it
     if file_extension not in SUPPORTED_VIDEO_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Unsupported file format '{file_extension}'. Supported extensions: {', '.join(SUPPORTED_VIDEO_EXTENSIONS)}")
+                            detail=f"Unsupported format '{file_extension}'")
 
     file_ogname = file.filename
     hasher = hashlib.sha256()
-    try:
-        chunck = await file.read()
-        hasher.update(chunck)
-    except Exception as e:
-        raise HTTPException(
-            400, f"Invalid file, couldn't generate sha256: {e}")
-
+    chunk = await file.read()
+    hasher.update(chunk)
     file_hash = hasher.hexdigest()
 
-    # Checks for cache, this also always invalidates a cache if the time has passed (cache job hasn't been called yet or it broke etc) this will be the last resort to invalidate cache.
-    cached_file = await util.cache.find_file(file_hash, 'mp3')
-
+    cached_file = await util.cache.find_file(file_hash, "mp3")
     if cached_file:
-        return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={os.path.splitext(file_ogname)[0]}.mp3', 'Content-Lenght': str(len(cached_file.file_bytes))}) if cached_file is not None else None
+        return StreamingResponse(
+            content=io.BytesIO(cached_file.file_bytes),
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": f"attachment; filename={os.path.splitext(file_ogname)[0]}.mp3",
+                "Content-Length": str(len(cached_file.file_bytes)),
+            },
+        )
 
     await file.seek(0)
-    converted_file = await ffmpegHelper.memConvertMp3(file, quality)
-    if converted_file is None:
-        raise HTTPException(500, "Could not convert")
+    try:
+        converted_file = await ffmpegHelper.diskConvertMp3(file, quality)
+    except Exception as e:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, f"Conversion error: {e}")
+
+    if not converted_file:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            "Conversion produced empty output")
+
     await file.seek(0)
     background_tasks.add_task(util.cache.cache_file, file_hash, file_ogname, await file.read(), converted_file)
-    return StreamingResponse(content=io.BytesIO(converted_file), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={os.path.splitext(file_ogname)[0]}.mp3', 'Content-Lenght': str(len(converted_file))})
+
+    return StreamingResponse(
+        content=io.BytesIO(converted_file),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f"attachment; filename={os.path.splitext(file_ogname)[0]}.mp3",
+            "Content-Length": str(len(converted_file)),
+        },
+    )
 
 
-@app.get("/cache/dl/{file_id}", tags=["cache"], name='dl_mp3')
-async def donwload_converted_cached_file(file_id: str):
-    """
-    Initiates the download of a converted cached file.
-
-    Args:
-        file_id (str): The ID of the cached file to download.
-    """
-    cached_file = await util.cache.find_file(file_id, 'mp3')
+@app.get("/cache/dl/{file_id}", tags=["cache"], name="dl_mp3")
+async def download_converted_cached_file(file_id: str):
+    """Download converted cached file."""
+    cached_file = await util.cache.find_file(file_id, "mp3")
     if not cached_file or not cached_file.file_bytes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid")
-    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='audio/mpeg', headers={'Content-Disposition': f'attachment; filename={cached_file.filename}.mp3', 'Content-Lenght': str(len(cached_file.file_bytes))})
+    return StreamingResponse(
+        content=io.BytesIO(cached_file.file_bytes),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f"attachment; filename={cached_file.filename}.mp3",
+            "Content-Length": str(len(cached_file.file_bytes)),
+        },
+    )
 
 
-@app.get("/cache/dl/og/{file_id}", tags=["cache"], name='dl_video')
-async def donwload_original_cached_file(file_id: str):
-    """
-    Initiates the download of an original cached file.
-
-    Args:
-        file_id (str): The ID of the cached file to download.
-    """
-    cached_file = await util.cache.find_file(file_id, 'video')
-
+@app.get("/cache/dl/og/{file_id}", tags=["cache"], name="dl_video")
+async def download_original_cached_file(file_id: str):
+    """Download original cached file."""
+    cached_file = await util.cache.find_file(file_id, "video")
     if not cached_file or not cached_file.file_bytes:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid")
-    return StreamingResponse(content=io.BytesIO(cached_file.file_bytes), media_type='video', headers={'Content-Disposition': f'attachment; filename={cached_file.filename}{cached_file.file_ext}', 'Content-Lenght': str(len(cached_file.file_bytes))})
+    return StreamingResponse(
+        content=io.BytesIO(cached_file.file_bytes),
+        media_type="video",
+        headers={
+            "Content-Disposition": f"attachment; filename={cached_file.filename}{cached_file.file_ext}",
+            "Content-Length": str(len(cached_file.file_bytes)),
+        },
+    )
 
 
-@app.get("/cache/", tags=['cache'], response_model=schemas.CacheResponse, responses={status.HTTP_404_NOT_FOUND: {"model": schemas.CacheNotFoundMessage}})
+@app.get("/cache/", tags=["cache"], response_model=schemas.CacheResponse, responses={status.HTTP_404_NOT_FOUND: {"model": schemas.CacheNotFoundMessage}})
 async def view_cache(request: Request):
-    """
-    Retrieves and displays the currently cached files.
-    """
+    """Retrieve cached files."""
     pretty_cached_data = {}
     for file in cached_data:
         og_url = f"{request.base_url}cache/dl/og/{file.video_file_hash}"
-        mp3_ulr = f"{request.base_url}cache/dl/{file.video_file_hash}"
+        mp3_url = f"{request.base_url}cache/dl/{file.video_file_hash}"
         time_invalidate = time.strftime(
             "%H:%M:%S", time.localtime(file.expiry_date))
-        min_till_expire = round((file.expiry_date - time.time())/60, 2)
-        min_till_expire = min_till_expire if min_till_expire > 0 else 0
+        min_till_expire = max(
+            round((file.expiry_date - time.time()) / 60, 2), 0)
         pretty_cached_data[file.filename] = schemas.CachedFileInfo(
-            minutes_until_invalid=min_till_expire, time_invalidate=time_invalidate, link_converted=mp3_ulr, link_original=og_url)
+            minutes_until_invalid=min_till_expire,
+            time_invalidate=time_invalidate,
+            link_converted=mp3_url,
+            link_original=og_url,
+        )
     if not cached_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="No cached files found")
