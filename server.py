@@ -14,8 +14,10 @@ import time
 import asyncio
 import queue
 import logging
+import base64
+import cv2
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("convertion_api")
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mkv",
@@ -56,7 +58,7 @@ app.add_middleware(
 )
 
 stop_event = asyncio.Event()
-cached_data: Any = None
+cached_data: list[util.schemas.CachedFileInfo] = None
 cached_data_q: "queue.Queue[Any]" = queue.Queue()
 
 
@@ -195,6 +197,33 @@ async def download_original_cached_file(file_id: str):
     )
 
 
+def generate_thumbnail(video_path: str) -> str:
+    """
+    Generate a thumbnail for the given video file and return it as a base64-encoded string.
+    """
+    try:
+        video = cv2.VideoCapture(video_path)
+        if not video.isOpened():
+            logger.info(f"Failed to open video file: {video_path}")
+            return None
+
+        success, frame = video.read()
+        video.release()
+
+        if not success:
+            logger.info(
+                f"Failed to read the first frame of video: {video_path}")
+            return None
+
+        _, buffer = cv2.imencode(".jpg", frame)
+
+        thumbnail_base64 = base64.b64encode(buffer).decode("utf-8")
+        return thumbnail_base64
+    except Exception as e:
+        logger.info(f"Failed to generate thumbnail for {video_path}: {e}")
+        return None
+
+
 @app.get("/cache/", tags=["cache"], response_model=schemas.CacheResponse, responses={status.HTTP_404_NOT_FOUND: {"model": schemas.CacheNotFoundMessage}})
 async def view_cache(request: Request):
     """Retrieve cached files."""
@@ -206,11 +235,17 @@ async def view_cache(request: Request):
             "%H:%M:%S", time.localtime(file.expiry_date))
         min_till_expire = max(
             round((file.expiry_date - time.time()) / 60, 2), 0)
+        logger.info(file.filename)
+        video_file_path = f"{os.getcwd().replace("\\", "/")}/cache/{file.video_file_hash}/{file.filename}{file.file_ext}"
+        thumbnail_base64 = generate_thumbnail(video_file_path)
+
         pretty_cached_data[file.filename] = schemas.CachedFileInfo(
             minutes_until_invalid=min_till_expire,
             time_invalidate=time_invalidate,
             link_converted=mp3_url,
             link_original=og_url,
+            thumbnail=thumbnail_base64,
+            file_extension=file.file_ext
         )
     if not cached_data:
         raise HTTPException(

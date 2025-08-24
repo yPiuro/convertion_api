@@ -5,7 +5,7 @@ import logging
 import tempfile
 import os
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("convertion_api")
 
 QUALITY_MAP = {

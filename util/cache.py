@@ -10,6 +10,7 @@ import stat
 BASE_DIR = os.getcwd()
 UMASK_PERMS = os.umask(0o000)
 
+
 @dataclass
 class CachedFile:
     filename: str
@@ -20,7 +21,7 @@ class CachedFile:
 
 
 async def find_file(video_file_hash: str, ext: Literal['mp3', 'video']) -> CachedFile:
-    cache_folder = f"{os.getcwd()}/cache/{video_file_hash}"
+    cache_folder = f"{BASE_DIR}/cache/{video_file_hash}"
     if os.path.exists(cache_folder) and len(os.listdir(cache_folder)) == 3:
         with open(f"{cache_folder}/metadata.json") as meta_file:
             meta = json.load(meta_file)
@@ -36,7 +37,7 @@ async def find_file(video_file_hash: str, ext: Literal['mp3', 'video']) -> Cache
 
 
 def view_info() -> list[CachedFile]:
-    cache_folder = f"{os.getcwd()}/cache"
+    cache_folder = f"{BASE_DIR}/cache"
     cached_data = []
     for folder in os.listdir(cache_folder):
         try:
