@@ -25,7 +25,7 @@ except Exception as e:
     exit()
 
 WORKING_DIR = os.getcwd() + "/dit8.convertapi"
-UMASK_PERMS = os.umask(0o777)
+UMASK_PERMS = os.umask(0o000)
 
 async def install_ffmpeg():
     """Attempt to download and extract an ffmpeg binary to the same directory."""
