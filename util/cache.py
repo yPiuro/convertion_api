@@ -8,7 +8,7 @@ import shutil
 import stat
 
 BASE_DIR = os.getcwd()
-UMASK_PERMS = os.umask(0o000)
+UMASK_PERMS = os.umask(0o777)
 
 
 @dataclass
@@ -71,13 +71,13 @@ async def cache_file(video_file_hash: str, filename: str, file_bytes: bytes, con
     video_path = os.path.join(subdir, filename)
     with open(video_path, "wb") as f:
         f.write(file_bytes)
-    os.chmod(video_path, 0o664)
+    os.chmod(video_path, 0o777)
     base, _ = os.path.splitext(filename)
     mp3_filename = base + ".mp3"
     mp3_path = os.path.join(subdir, mp3_filename)
     with open(mp3_path, "wb") as f:
         f.write(converted_file_bytes)
-    os.chmod(mp3_path, 0o664)
+    os.chmod(mp3_path, 0o777)
 
     metadata = {
         "expiry_date": expiry_date,
@@ -87,7 +87,7 @@ async def cache_file(video_file_hash: str, filename: str, file_bytes: bytes, con
     meta_path = os.path.join(subdir, "metadata.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
-    os.chmod(meta_path, 0o664)
+    os.chmod(meta_path, 0o777)
     return CachedFile(
         filename=filename,
         video_file_hash=video_file_hash,
