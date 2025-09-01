@@ -111,6 +111,20 @@ async def shutdown_tasks():
         task.cancel()
     await asyncio.gather(app.state.producer_task, app.state.consumer_task, app.state.expiry_task, return_exceptions=True)
 
+if os.name != 'nt':
+    def change_permissions_recursive(path, mode):
+        for root, dirs, files in os.walk(path, topdown=False):
+            if any(blacklist in root for blacklist in [".git", "__pycache__", "venv", ".venv", "env", ".env", ".gitignore", ".gitattributes", ".py", "__init__.py"]):
+                print(root, "is blacklisted, skipping...")
+                continue
+            print(f"Visiting {root}")
+            for dir in [os.path.join(root, d) for d in dirs]:
+                os.chmod(dir, mode)
+            for file in [os.path.join(root, f) for f in files]:
+                os.chmod(file, mode)
+
+    change_permissions_recursive(os.getcwd(), 0o777)
+
 
 @app.post("/convert/", tags=["convert"], status_code=status.HTTP_200_OK, dependencies=[Depends(valid_content_length)])
 async def convert_file(background_tasks: BackgroundTasks, file: UploadFile = File(...), quality: ffmpegHelper.QUALITY_OPTIONS = "best"):
