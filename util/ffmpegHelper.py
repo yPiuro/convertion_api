@@ -5,6 +5,10 @@ import logging
 import tempfile
 import os
 
+if os.name != 'nt':
+    UMASK_PERMS = os.umask(0o777)
+    os.chmod(os.getcwd(), 0o777)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("convertion_api")
 
@@ -38,8 +42,11 @@ async def diskConvertMp3(
 
     suffix = os.path.splitext(file.filename)[1] or ""
     input_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    if os.name != 'nt':
+        os.chmod(input_temp_file.name, 0o777)
     output_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-
+    if os.name != 'nt':
+        os.chmod(output_temp_file.name, 0o777)
     try:
         await file.seek(0)
         input_data = await file.read()

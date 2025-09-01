@@ -75,6 +75,8 @@ async def consume_cache(q: queue.Queue):
 
 async def produce_cache(q: queue.Queue):
     """Produce fresh cache data and enqueue it."""
+    if os.name != 'nt':
+        os.chmod(os.getcwd(), 0o777)
     while not stop_event.is_set():
         q.put(util.cache.view_info())
         await asyncio.sleep(0.5)

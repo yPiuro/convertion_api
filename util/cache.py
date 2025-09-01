@@ -10,6 +10,7 @@ import stat
 BASE_DIR = os.getcwd()
 if os.name != 'nt':
     UMASK_PERMS = os.umask(0o777)
+    os.chmod(BASE_DIR, 0o777)
 
 
 @dataclass
@@ -68,6 +69,8 @@ async def cache_file(video_file_hash: str, filename: str, file_bytes: bytes, con
     """Store original MP4 bytes, converted MP3 bytes, and expiry in the cache folder."""
     subdir = os.path.join(BASE_DIR, f"cache/{video_file_hash}")
     os.makedirs(subdir, exist_ok=True)
+    if os.name != 'nt':
+        os.chmod(subdir, 0o777)
     expiry_date = time.time() + (3600//2//3)
     video_path = os.path.join(subdir, filename)
     with open(video_path, "wb") as f:

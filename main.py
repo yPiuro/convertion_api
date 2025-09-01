@@ -24,7 +24,6 @@ except Exception as e:
     redownload the project as there are files missing""")
     exit()
 
-WORKING_DIR = os.getcwd() + "/dit8.convertapi"
 if os.name != 'nt':
     UMASK_PERMS = os.umask(0o777)
 
@@ -33,7 +32,7 @@ async def install_ffmpeg():
     """Attempt to download and extract an ffmpeg binary to the same directory."""
     system = platform.system()
     arch = platform.machine()
-    ffmpeg_dir = os.path.dirname(WORKING_DIR)
+    ffmpeg_dir = os.path.dirname(os.getcwd())
     ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg") if system != "Windows" else os.path.join(
         ffmpeg_dir, "ffmpeg") + ".exe"
 
