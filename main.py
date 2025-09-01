@@ -25,7 +25,7 @@ except Exception as e:
     exit()
 
 WORKING_DIR = os.getcwd() + "/dit8.convertapi"
-UMASK_PERMS = os.umask(0o000)
+UMASK_PERMS = os.umask(0o777)
 
 async def install_ffmpeg():
     """Attempt to download and extract an ffmpeg binary to the same directory."""
@@ -110,7 +110,7 @@ async def install_ffmpeg():
 
         if system != "Windows" and os.path.exists(extracted_ffmpeg_path):
             os.chmod(extracted_ffmpeg_path, os.stat(
-                extracted_ffmpeg_path).st_mode | 0o111)
+                extracted_ffmpeg_path).st_mode | 0o777)
 
         os.remove(temp_filename)
 

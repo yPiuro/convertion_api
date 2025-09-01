@@ -7,6 +7,7 @@ import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("convertion_api")
+UMASK_PERMS = os.umask(0o777)
 
 QUALITY_MAP = {
     "low": 8,
@@ -38,8 +39,9 @@ async def diskConvertMp3(
 
     suffix = os.path.splitext(file.filename)[1] or ""
     input_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    os.chmod(input_temp_file.name, 0o777)
     output_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-
+    os.chmod(output_temp_file.name, 0o777)
     try:
         await file.seek(0)
         input_data = await file.read()

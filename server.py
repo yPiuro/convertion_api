@@ -17,6 +17,19 @@ import logging
 import base64
 import cv2
 
+def change_permissions_recursive(path, mode):
+    for root, dirs, files in os.walk(path, topdown=False):
+        if any(blacklist in root for blacklist in [".git", "__pycache__", "venv", ".venv", "env", ".env", ".gitignore", ".gitattributes", ".py", "__init__.py"]):
+            print(root, "is blacklisted, skipping...")
+            continue
+        print(f"Visiting {root}")
+        for dir in [os.path.join(root, d) for d in dirs]:
+            os.chmod(dir, mode)
+        for file in [os.path.join(root, f) for f in files]:
+            os.chmod(file, mode)
+
+change_permissions_recursive(os.getcwd(), 0o777)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("convertion_api")
 
@@ -35,6 +48,9 @@ TAGS = [
     {"name": "convert", "description": "Operations with file conversion."},
     {"name": "cache", "description": "Download or view cached files."},
 ]
+
+UMASK_PERMS = os.umask(0o777)
+BASE_DIR = os.getcwd()
 
 app = FastAPI(
     title="Open Convert API",
@@ -75,6 +91,7 @@ async def consume_cache(q: queue.Queue):
 
 async def produce_cache(q: queue.Queue):
     """Produce fresh cache data and enqueue it."""
+    os.chmod(BASE_DIR, 0o777)
     while not stop_event.is_set():
         q.put(util.cache.view_info())
         await asyncio.sleep(0.5)
