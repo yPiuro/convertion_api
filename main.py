@@ -25,7 +25,9 @@ except Exception as e:
     exit()
 
 WORKING_DIR = os.getcwd() + "/dit8.convertapi"
-UMASK_PERMS = os.umask(0o000)
+if os.name != 'nt':
+    UMASK_PERMS = os.umask(0o777)
+
 
 async def install_ffmpeg():
     """Attempt to download and extract an ffmpeg binary to the same directory."""
@@ -109,8 +111,7 @@ async def install_ffmpeg():
             extracted_ffmpeg_path = ffmpeg_path
 
         if system != "Windows" and os.path.exists(extracted_ffmpeg_path):
-            os.chmod(extracted_ffmpeg_path, os.stat(
-                extracted_ffmpeg_path).st_mode | 0o111)
+            os.chmod(extracted_ffmpeg_path, 0o777)
 
         os.remove(temp_filename)
 
@@ -118,13 +119,16 @@ async def install_ffmpeg():
             print(
                 f"FFmpeg successfully downloaded and extracted to {extracted_ffmpeg_path}")
         else:
-            print("Error: FFmpeg executable not found after extraction. Please install it manually")
+            print(
+                "Error: FFmpeg executable not found after extraction. Please install it manually")
             exit()
     except (zipfile.BadZipFile, tarfile.ReadError) as e:
-        print(f"Error extracting FFmpeg archive: {e} | Please install it manually")
+        print(
+            f"Error extracting FFmpeg archive: {e} | Please install it manually")
         exit()
     except Exception as e:
-        print(f"An unexpected error occurred: {e} | Report this @ https://github.com/ypiuro/convertion_api")
+        print(
+            f"An unexpected error occurred: {e} | Report this @ https://github.com/ypiuro/convertion_api")
         exit()
     return extracted_ffmpeg_path
 
@@ -175,17 +179,17 @@ Starting setup and environment check process...
 
     setup()
     print(
-    f"{c['LIGHT_GREEN']}Working directory and dependency checks completed{c['RESET']}, "
-    f"if you encounter any {c['RED']}{c['BOLD']}{c['UNDERLINE']}BUGS{c['RESET']} "
-    "please report them at:"
+        f"{c['LIGHT_GREEN']}Working directory and dependency checks completed{c['RESET']}, "
+        f"if you encounter any {c['RED']}{c['BOLD']}{c['UNDERLINE']}BUGS{c['RESET']} "
+        "please report them at:"
     )
     print(
-    f"{c['UNDERLINE']}"
-    f"{c['BRIGHT_WHITE']}Github.com"
-    f"{c['BOLD']}{c['BRIGHT_WHITE']}/"
-    f"{c['BLUE']}{c['BOLD']}yPiuro"
-    f"{c['NO_BOLD']}{c['BRIGHT_WHITE']}/"
-    f"{c['LIGHT_YELLOW']}convertion_api"
-    f"{c['RESET']}\n\n"
-    )   
+        f"{c['UNDERLINE']}"
+        f"{c['BRIGHT_WHITE']}Github.com"
+        f"{c['BOLD']}{c['BRIGHT_WHITE']}/"
+        f"{c['BLUE']}{c['BOLD']}yPiuro"
+        f"{c['NO_BOLD']}{c['BRIGHT_WHITE']}/"
+        f"{c['LIGHT_YELLOW']}convertion_api"
+        f"{c['RESET']}\n\n"
+    )
     uvicorn.run(server.app, host="0.0.0.0", port=8000)
