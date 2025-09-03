@@ -11,6 +11,8 @@ class CachedFileInfo(BaseModel):
     link_converted: str
     time_invalidate: str
     minutes_until_invalid: float
+    file_extension: str
+    thumbnail: str
 
 
 class CachedFiles(RootModel[Dict[str, CachedFileInfo]]):

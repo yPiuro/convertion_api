@@ -8,7 +8,10 @@ import shutil
 import stat
 
 BASE_DIR = os.getcwd()
-UMASK_PERMS = os.umask(0o000)
+if os.name != 'nt':
+    UMASK_PERMS = os.umask(0o777)
+    os.chmod(BASE_DIR, 0o777)
+
 
 @dataclass
 class CachedFile:
@@ -20,7 +23,7 @@ class CachedFile:
 
 
 async def find_file(video_file_hash: str, ext: Literal['mp3', 'video']) -> CachedFile:
-    cache_folder = f"{os.getcwd()}/cache/{video_file_hash}"
+    cache_folder = f"{BASE_DIR}/cache/{video_file_hash}"
     if os.path.exists(cache_folder) and len(os.listdir(cache_folder)) == 3:
         with open(f"{cache_folder}/metadata.json") as meta_file:
             meta = json.load(meta_file)
@@ -36,7 +39,7 @@ async def find_file(video_file_hash: str, ext: Literal['mp3', 'video']) -> Cache
 
 
 def view_info() -> list[CachedFile]:
-    cache_folder = f"{os.getcwd()}/cache"
+    cache_folder = f"{BASE_DIR}/cache"
     cached_data = []
     for folder in os.listdir(cache_folder):
         try:
@@ -66,17 +69,21 @@ async def cache_file(video_file_hash: str, filename: str, file_bytes: bytes, con
     """Store original MP4 bytes, converted MP3 bytes, and expiry in the cache folder."""
     subdir = os.path.join(BASE_DIR, f"cache/{video_file_hash}")
     os.makedirs(subdir, exist_ok=True)
+    if os.name != 'nt':
+        os.chmod(subdir, 0o777)
     expiry_date = time.time() + (3600//2//3)
     video_path = os.path.join(subdir, filename)
     with open(video_path, "wb") as f:
         f.write(file_bytes)
-    os.chmod(video_path, 0o664)
+    if os.name != 'nt':
+        os.chmod(video_path, 0o777)
     base, _ = os.path.splitext(filename)
     mp3_filename = base + ".mp3"
     mp3_path = os.path.join(subdir, mp3_filename)
     with open(mp3_path, "wb") as f:
         f.write(converted_file_bytes)
-    os.chmod(mp3_path, 0o664)
+    if os.name != 'nt':
+        os.chmod(mp3_path, 0o777)
 
     metadata = {
         "expiry_date": expiry_date,
@@ -86,7 +93,8 @@ async def cache_file(video_file_hash: str, filename: str, file_bytes: bytes, con
     meta_path = os.path.join(subdir, "metadata.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
-    os.chmod(meta_path, 0o664)
+    if os.name != 'nt':
+        os.chmod(meta_path, 0o777)
     return CachedFile(
         filename=filename,
         video_file_hash=video_file_hash,
@@ -103,5 +111,6 @@ def expiry_job():
             with open(f"{cache_folder}/{folder}/metadata.json") as meta_file:
                 meta = json.load(meta_file)
             if meta["expiry_date"] is not None and meta["expiry_date"] < time.time():
-                os.chmod(f"{cache_folder}/{folder}", stat.S_IWRITE)
+                if os.name != 'nt':
+                    os.chmod(f"{cache_folder}/{folder}", 0o777)
                 shutil.rmtree(f"{cache_folder}/{folder}")
